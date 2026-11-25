@@ -29,8 +29,11 @@
 git clone https://github.com/ghostwipe-png/Ghost-SMS.git
 cd Ghost-SMS
 ./gradlew assembleFossDebug
+`
 Install directly onto a connected Android device via ADB:
-Bash
+`ash
 ./gradlew installFossDebug
-License
-Licensed under the GNU General Public License v3.0 (GPL-3.0). See LICENSE for full details.
+`
+---
+## License
+Licensed under the **GNU General Public License v3.0 (GPL-3.0)**. See [LICENSE](https://www.google.com/search?q=LICENSE) for full details.
