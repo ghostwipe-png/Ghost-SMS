@@ -5,29 +5,29 @@
     android:id="@+id/conversation_frame"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="@dimen/tiny_margin"
+    android:layout_marginHorizontal="12dp"
+    android:layout_marginVertical="4dp"
     android:clickable="true"
     android:focusable="true"
-    android:minHeight="@dimen/two_line_list_item_min_height"
-    android:paddingStart="@dimen/activity_margin"
-    android:paddingTop="@dimen/medium_margin"
-    android:paddingEnd="@dimen/activity_margin"
-    android:paddingBottom="@dimen/medium_margin">
-
+    android:minHeight="72dp"
+    android:paddingStart="14dp"
+    android:paddingTop="12dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="12dp">
     <ImageView
         android:id="@+id/conversation_image"
-        android:layout_width="@dimen/list_icon_size_medium"
-        android:layout_height="@dimen/list_icon_size_medium"
-        app:layout_constraintBottom_toBottomOf="@id/conversation_body_short"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="@id/conversation_address"
+        app:layout_constraintTop_toTopOf="parent"
         tools:src="@mipmap/ic_launcher" />
-
     <org.fossify.commons.views.MyTextView
         android:id="@+id/conversation_address"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="@dimen/activity_margin"
+        android:layout_marginStart="14dp"
+        android:layout_marginEnd="10dp"
         android:ellipsize="end"
         android:maxLines="1"
         android:textAlignment="viewStart"
@@ -37,13 +37,13 @@
         app:layout_constraintEnd_toStartOf="@id/conversation_date"
         app:layout_constraintStart_toEndOf="@id/conversation_image"
         app:layout_constraintTop_toTopOf="parent"
-        tools:text="John" />
-
+        app:layout_constraintVertical_chainStyle="packed"
+        tools:text="M-PESA" />
     <org.fossify.commons.views.MyTextView
         android:id="@+id/draft_indicator"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginEnd="@dimen/small_margin"
+        android:layout_marginEnd="6dp"
         android:ellipsize="end"
         android:maxLines="1"
         android:text="@string/draft"
@@ -56,12 +56,12 @@
         app:layout_constraintEnd_toStartOf="@id/conversation_body_short"
         app:layout_constraintStart_toStartOf="@id/conversation_address"
         app:layout_constraintTop_toTopOf="@id/conversation_body_short" />
-
     <org.fossify.commons.views.MyTextView
         android:id="@+id/conversation_body_short"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginEnd="@dimen/activity_margin"
+        android:layout_marginTop="3dp"
+        android:layout_marginEnd="10dp"
         android:ellipsize="end"
         android:maxLines="1"
         android:textAlignment="viewStart"
@@ -71,26 +71,25 @@
         app:layout_constraintEnd_toStartOf="@id/pin_indicator"
         app:layout_constraintStart_toEndOf="@id/draft_indicator"
         app:layout_constraintTop_toBottomOf="@id/conversation_address"
-        tools:text="Hey buddy!" />
-
+        tools:text="Confirmed. Ksh 2,500.00 sent to John Doe" />
     <org.fossify.commons.views.MyTextView
         android:id="@+id/conversation_date"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:alpha="0.7"
-        android:textAlignment="viewStart"
+        android:alpha="0.72"
+        android:textAlignment="viewEnd"
         android:textDirection="locale"
         android:textSize="@dimen/list_tertiary_text_size"
         app:layout_constraintBottom_toBottomOf="@id/conversation_address"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="@id/conversation_address"
         tools:text="13:30" />
-
     <ImageView
         android:id="@+id/pin_indicator"
         android:layout_width="@dimen/small_icon_size"
         android:layout_height="@dimen/small_icon_size"
-        android:alpha="0.7"
+        android:layout_marginEnd="4dp"
+        android:alpha="0.75"
         android:padding="@dimen/tiny_margin"
         android:src="@drawable/ic_pin_filled_vector"
         android:visibility="gone"
@@ -98,18 +97,20 @@
         app:layout_constraintEnd_toStartOf="@id/unread_count_badge"
         app:layout_constraintTop_toTopOf="@id/conversation_body_short"
         tools:visibility="visible" />
-
     <org.fossify.commons.views.MyTextView
         android:id="@+id/unread_count_badge"
-        android:layout_width="@dimen/small_icon_size"
-        android:layout_height="@dimen/small_icon_size"
+        android:layout_width="wrap_content"
+        android:layout_height="20dp"
+        android:minWidth="20dp"
+        android:paddingHorizontal="6dp"
         android:background="@drawable/circle_background"
         android:gravity="center"
+        android:textStyle="bold"
         android:textSize="@dimen/list_tertiary_text_size"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/conversation_body_short"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="@id/conversation_body_short"
-        tools:text="42"
+        tools:text="3"
         tools:visibility="visible" />
 </androidx.constraintlayout.widget.ConstraintLayout>

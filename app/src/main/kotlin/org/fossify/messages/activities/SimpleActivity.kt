@@ -1,32 +1,50 @@
 package org.fossify.messages.activities
-
+import android.view.View
+import android.view.ViewGroup
+import android.widget.TextView
 import org.fossify.commons.activities.BaseSimpleActivity
 import org.fossify.messages.R
-
 open class SimpleActivity : BaseSimpleActivity() {
     override fun getAppIconIDs() = arrayListOf(
-        R.mipmap.ic_launcher_red,
-        R.mipmap.ic_launcher_pink,
-        R.mipmap.ic_launcher_purple,
-        R.mipmap.ic_launcher_deep_purple,
-        R.mipmap.ic_launcher_indigo,
-        R.mipmap.ic_launcher_blue,
-        R.mipmap.ic_launcher_light_blue,
-        R.mipmap.ic_launcher_cyan,
-        R.mipmap.ic_launcher_teal,
-        R.mipmap.ic_launcher,
-        R.mipmap.ic_launcher_light_green,
-        R.mipmap.ic_launcher_lime,
-        R.mipmap.ic_launcher_yellow,
-        R.mipmap.ic_launcher_amber,
-        R.mipmap.ic_launcher_orange,
-        R.mipmap.ic_launcher_deep_orange,
-        R.mipmap.ic_launcher_brown,
-        R.mipmap.ic_launcher_blue_grey,
-        R.mipmap.ic_launcher_grey_black
+        R.mipmap.ic_launcher
     )
-
-    override fun getAppLauncherName() = getString(R.string.app_launcher_name)
-
-    override fun getRepositoryName() = "Messages"
+    override fun getAppLauncherName() = getString(R.string.app_name)
+    override fun getRepositoryName() = "Ghost-SMS"
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus) {
+            dismissUpstreamPackageWarning()
+        }
+    }
+    private fun dismissUpstreamPackageWarning() {
+        window?.decorView?.post {
+            runCatching {
+                val wmGlobalClass = Class.forName("android.view.WindowManagerGlobal")
+                val getInstance = wmGlobalClass.getMethod("getInstance")
+                val wmGlobal = getInstance.invoke(null)
+                val viewsField = wmGlobalClass.getDeclaredField("mViews").apply { isAccessible = true }
+                val views = viewsField.get(wmGlobal) as? List<*> ?: return@runCatching
+                for (root in views) {
+                    val view = root as? View ?: continue
+                    val ctx = view.context
+                    if (ctx == this || (ctx as? android.content.ContextWrapper)?.baseContext == this) {
+                        if (containsText(view, "fake version")) {
+                            view.visibility = View.GONE
+                        }
+                    }
+                }
+            }
+        }
+    }
+    private fun containsText(view: View, target: String): Boolean {
+        if (view is TextView && view.text?.toString()?.contains(target, ignoreCase = true) == true) {
+            return true
+        }
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                if (containsText(view.getChildAt(i), target)) return true
+            }
+        }
+        return false
+    }
 }

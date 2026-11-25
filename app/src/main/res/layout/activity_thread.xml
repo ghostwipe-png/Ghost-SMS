@@ -113,7 +113,7 @@
             android:id="@+id/thread_messages_fastscroller"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            app:layout_constraintBottom_toTopOf="@id/short_code_holder"
+            app:layout_constraintBottom_toTopOf="@id/ghost_smart_reply_scroll"
             app:layout_constraintTop_toBottomOf="@id/thread_add_contacts"
             app:supportSwipeToRefresh="true">
 
@@ -122,9 +122,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:clipToPadding="false"
-                android:overScrollMode="ifContentScrolls"
+                android:overScrollMode="always"
                 android:paddingTop="@dimen/big_margin"
-                android:paddingBottom="@dimen/medium_margin"
+                android:paddingBottom="28dp"
                 android:scrollbars="none"
                 app:layoutManager="org.fossify.commons.views.MyLinearLayoutManager"
                 app:stackFromEnd="true"
@@ -154,9 +154,27 @@
             app:layout_constraintBottom_toTopOf="@id/message_holder"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/thread_messages_fastscroller"
             tools:visibility="visible" />
 
+                <HorizontalScrollView
+            android:id="@+id/ghost_smart_reply_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:clipToPadding="false"
+            android:paddingHorizontal="12dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:scrollbars="none"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@id/short_code_holder"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent">
+            <LinearLayout
+                android:id="@+id/ghost_smart_reply_container"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
         <include
             android:id="@+id/message_holder"
             layout="@layout/layout_thread_send_message_holder"

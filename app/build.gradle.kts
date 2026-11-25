@@ -32,7 +32,7 @@ android {
     compileSdk = project.libs.versions.app.build.compileSDKVersion.get().toInt()
 
     defaultConfig {
-        applicationId = project.property("APP_ID").toString()
+        applicationId = "com.ghost.messages"
         minSdk = project.libs.versions.app.build.minimumSDK.get().toInt()
         targetSdk = project.libs.versions.app.build.targetSDK.get().toInt()
         versionName = project.property("VERSION_NAME").toString()
@@ -146,6 +146,7 @@ dependencies {
     implementation(libs.mmslib)
     implementation(libs.androidx.swiperefreshlayout)
     implementation(libs.androidx.constraintlayout)
+    implementation("androidx.biometric:biometric:1.1.0")
     implementation(libs.androidx.documentfile)
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.ez.vcard)

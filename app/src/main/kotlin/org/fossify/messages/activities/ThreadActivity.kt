@@ -1,4 +1,27 @@
 package org.fossify.messages.activities
+import org.fossify.messages.helpers.GhostPrivacyManager
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.util.TypedValue
+import android.widget.LinearLayout
+import android.widget.TextView
+import org.fossify.commons.extensions.adjustAlpha
+import org.fossify.messages.dialogs.GhostThreadIntelSheet
+import org.fossify.messages.helpers.GhostSmartReplyHelper
+import org.fossify.messages.dialogs.GhostSnippetsSheet
+import org.fossify.messages.helpers.GhostSimRouter
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.graphics.Canvas
+import android.os.CountDownTimer
+import android.view.HapticFeedbackConstants
+import androidx.recyclerview.widget.ItemTouchHelper
+import com.google.android.material.snackbar.Snackbar
+import org.fossify.messages.helpers.GhostOtpHelper
+import android.view.WindowManager
+import androidx.appcompat.app.AlertDialog
+import org.fossify.messages.helpers.GhostEphemeralManager
+import org.fossify.messages.helpers.GhostVaultManager
 
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -25,15 +48,13 @@ import android.text.format.DateUtils
 import android.text.format.DateUtils.FORMAT_NO_YEAR
 import android.text.format.DateUtils.FORMAT_SHOW_DATE
 import android.text.format.DateUtils.FORMAT_SHOW_TIME
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MenuItem
 import android.view.View
-import android.view.WindowManager
 import android.view.animation.OvershootInterpolator
+import androidx.recyclerview.widget.DefaultItemAnimator
 import android.view.inputmethod.EditorInfo
-import android.widget.LinearLayout
 import android.widget.LinearLayout.LayoutParams
 import android.widget.RelativeLayout
 import android.widget.Toast
@@ -277,6 +298,9 @@ class ThreadActivity : SimpleActivity() {
 
     override fun onResume() {
         super.onResume()
+        GhostPrivacyManager.applyWindowSecurity(this)
+        applyGhostVaultWindowSecurity()
+        ensureBackgroundThread { val purged = GhostEphemeralManager.purgeExpiredMessages(this, threadId); if (purged > 0) runOnUiThread { refreshMessages() } }
         setupTopAppBar(
             topAppBar = binding.threadAppbar,
             navigationIcon = NavigationIcon.Arrow,
@@ -293,6 +317,7 @@ class ThreadActivity : SimpleActivity() {
                 conversation = newConv
                 runOnUiThread {
                     setupThreadTitle()
+                updateGhostSmartReplyBar()
                 }
             }
 
@@ -314,6 +339,7 @@ class ThreadActivity : SimpleActivity() {
 
     override fun onPause() {
         super.onPause()
+        if (ghostUndoTimer != null) { val p = ghostPendingText; val subId = availableSIMCards.getOrNull(currentSIMCardIndex)?.subscriptionId ?: SmsManager.getDefaultSmsSubscriptionId(); cancelGhostPendingSend(false); if (!p.isNullOrEmpty()) sendNormalMessage(p, subId) }
         saveDraftMessage()
         bus?.post(Events.RefreshConversations())
         isActivityVisible = false
@@ -357,6 +383,13 @@ class ThreadActivity : SimpleActivity() {
         binding.threadToolbar.menu.apply {
             findItem(R.id.delete).isVisible = threadItems.isNotEmpty()
             findItem(R.id.restore).isVisible = threadItems.isNotEmpty() && isRecycleBin
+            findItem(R.id.toggle_ghost_vault)?.title = if (GhostVaultManager.isThreadVaulted(this@ThreadActivity, threadId)) {
+                "Unhide from Ghost Vault"
+            } else {
+                "Move to Ghost Vault"
+            }
+            val currentTtl = GhostEphemeralManager.getThreadTtlSeconds(this@ThreadActivity, threadId)
+            findItem(R.id.ephemeral_timer_menu)?.title = "Disappearing Timer: ${GhostEphemeralManager.formatTtlLabel(currentTtl)}"
             findItem(R.id.archive).isVisible =
                 threadItems.isNotEmpty() && conversation?.isArchived == false && !isRecycleBin && archiveAvailable
             findItem(R.id.unarchive).isVisible =
@@ -392,6 +425,15 @@ class ThreadActivity : SimpleActivity() {
             R.id.block_number -> blockNumber()
             R.id.delete -> askConfirmDelete()
             R.id.restore -> askConfirmRestoreAll()
+            R.id.schedule_message_menu -> {
+                if (isScheduledMessage) {
+                    launchScheduleSendDialog(scheduledDateTime)
+                } else {
+                    launchScheduleSendDialog()
+                }
+            }
+            R.id.toggle_ghost_vault -> toggleGhostVaultStatus()
+            R.id.ephemeral_timer_menu -> showEphemeralTimerDialog()
             R.id.archive -> archiveConversation()
             R.id.unarchive -> unarchiveConversation()
             R.id.rename_conversation -> renameConversation()
@@ -463,6 +505,7 @@ class ThreadActivity : SimpleActivity() {
                 }
 
                 setupThreadTitle()
+                updateGhostSmartReplyBar()
                 setupSIMSelector()
                 updateMessageType()
                 callback()
@@ -564,6 +607,7 @@ class ThreadActivity : SimpleActivity() {
             setupAdapter()
             runOnUiThread {
                 setupThreadTitle()
+                updateGhostSmartReplyBar()
                 setupSIMSelector()
                 callback()
             }
@@ -616,7 +660,7 @@ class ThreadActivity : SimpleActivity() {
                 val lastVisiblePosition = layoutManager.findLastVisibleItemPosition()
                 val shouldScrollToBottom =
                     currentList.lastOrNull() != latestThreadItems.lastOrNull() &&
-                            lastPosition - lastVisiblePosition == 1
+                            lastPosition - lastVisiblePosition <= 3
                 updateMessages(latestThreadItems, if (shouldScrollToBottom) lastPosition else -1)
             }
         }
@@ -878,11 +922,19 @@ class ThreadActivity : SimpleActivity() {
                 sendMessage()
             }
 
-            threadSendMessage.setOnLongClickListener {
+                        threadSendMessage.setOnLongClickListener {
                 if (!isScheduledMessage) {
-                    launchScheduleSendDialog()
+                    GhostSnippetsSheet(this@ThreadActivity) { snippet ->
+                        val existing = threadTypeMessage.value
+                        val updated = if (existing.isEmpty()) snippet else "$existing $snippet"
+                        threadTypeMessage.setText(updated)
+                        threadTypeMessage.setSelection(updated.length)
+                        threadTypeMessage.requestFocus()
+                    }.show()
+                    true
+                } else {
+                    false
                 }
-                true
             }
 
             threadSendMessage.isClickable = false
@@ -966,7 +1018,24 @@ class ThreadActivity : SimpleActivity() {
                     addAttachment(it)
                 }
             }
-            scrollToBottomFab.setOnClickListener {
+            binding.threadMessagesList.apply {
+            setHasFixedSize(false)
+            setItemViewCacheSize(32)
+            (itemAnimator as? DefaultItemAnimator)?.apply {
+                supportsChangeAnimations = false
+                addDuration = 160L
+                moveDuration = 160L
+            }
+            addOnLayoutChangeListener { _, _, _, _, bottom, _, _, _, oldBottom ->
+                if (bottom < oldBottom) {
+                    val lastIdx = (adapter?.itemCount ?: 0) - 1
+                    if (lastIdx >= 0) {
+                        post { smoothScrollToPosition(lastIdx) }
+                    }
+                }
+            }
+        }
+        scrollToBottomFab.setOnClickListener {
                 scrollToBottom()
             }
             scrollToBottomFab.backgroundTintList = ColorStateList.valueOf(getBottomBarColor())
@@ -1096,7 +1165,13 @@ class ThreadActivity : SimpleActivity() {
                 return
             }
 
-            currentSIMCardIndex = getProperSimIndex(availableSIMs, numbers)
+                        currentSIMCardIndex = getProperSimIndex(availableSIMs, numbers)
+            val hasExplicitSimPref = numbers.any { config.getUseSIMIdAtNumber(it) != 0 }
+            if (!hasExplicitSimPref) {
+                GhostSimRouter.findBestSimIndex(availableSIMCards, numbers)?.let { smartIdx ->
+                    currentSIMCardIndex = smartIdx
+                }
+            }
             binding.messageHolder.threadSelectSimIcon.applyColorFilter(getProperTextColor())
             binding.messageHolder.threadSelectSimIcon.beVisible()
             binding.messageHolder.threadSelectSimNumber.beVisible()
@@ -1315,6 +1390,7 @@ class ThreadActivity : SimpleActivity() {
                 conversation = renameConversation(conversation!!, newTitle = title)
                 runOnUiThread {
                     setupThreadTitle()
+                updateGhostSmartReplyBar()
                 }
             }
         }
@@ -1582,7 +1658,170 @@ class ThreadActivity : SimpleActivity() {
         updateMessageType()
     }
 
+        private var ghostUndoTimer: CountDownTimer? = null
+    private var ghostPendingText: String? = null
+    private var ghostUndoSnackbar: Snackbar? = null
+    private var ghostLastPromptedOtpId: Long = -1L
+        private fun applyGhostVaultWindowSecurity() {
+        if (GhostVaultManager.isThreadVaulted(this, threadId)) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+    private fun toggleGhostVaultStatus() {
+        val currentlyVaulted = GhostVaultManager.isThreadVaulted(this, threadId)
+        GhostVaultManager.authenticate(
+            activity = this,
+            title = if (currentlyVaulted) "Unhide Conversation" else "Move to Ghost Vault",
+            subtitle = "Verify identity to update Ghost Vault protection",
+            onSuccess = {
+                val newState = !currentlyVaulted
+                GhostVaultManager.setThreadVaulted(this, threadId, newState)
+                applyGhostVaultWindowSecurity()
+                refreshConversations()
+                if (newState) {
+                    toast("Moved to Ghost Vault (screenshots blocked)")
+                    finish()
+                } else {
+                    toast("Restored to main inbox")
+                }
+            }
+        )
+    }
+    private fun showEphemeralTimerDialog() {
+        if (isFinishing || isDestroyed) return
+        if (threadId <= 0L) {
+            toast("Send a message first to activate self-destructing timer")
+            return
+        }
+        try {
+            val labels = GhostEphemeralManager.TIMER_OPTIONS.map { it.second }.toTypedArray()
+            val currentTtl = GhostEphemeralManager.getThreadTtlSeconds(this, threadId)
+            val checkedIdx = GhostEphemeralManager.TIMER_OPTIONS.indexOfFirst { it.first == currentTtl }.coerceAtLeast(0)
+            AlertDialog.Builder(this, androidx.appcompat.R.style.Theme_AppCompat_Dialog_Alert)
+                .setTitle("Self-Destructing Messages")
+                .setSingleChoiceItems(labels, checkedIdx) { dialog, which ->
+                    val (ttlSec, label) = GhostEphemeralManager.TIMER_OPTIONS[which]
+                    GhostEphemeralManager.setThreadTtlSeconds(this, threadId, ttlSec)
+                    refreshMenuItems()
+                    toast(if (ttlSec == 0L) "Disappearing timer turned off" else "Messages will auto-delete after $label")
+                    dialog.dismiss()
+                    if (ttlSec > 0L) {
+                        ensureBackgroundThread {
+                            val purged = GhostEphemeralManager.purgeExpiredMessages(applicationContext, threadId)
+                            if (purged > 0 && !isFinishing && !isDestroyed) {
+                                runOnUiThread {
+                                    try {
+                                        refreshMessages()
+                                    } catch (_: Exception) {
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        } catch (e: Exception) {
+            toast("Could not open timer settings: ${e.message ?: "error"}")
+        }
+    }
+
+    private fun cancelGhostPendingSend(restoreText: Boolean) {
+        ghostUndoTimer?.cancel()
+        ghostUndoTimer = null
+        ghostUndoSnackbar?.dismiss()
+        ghostUndoSnackbar = null
+        val pending = ghostPendingText
+        ghostPendingText = null
+        binding.messageHolder.threadSendMessage.text = getString(R.string.sms)
+        if (restoreText && !pending.isNullOrEmpty()) {
+            binding.messageHolder.threadTypeMessage.setText(pending)
+            binding.messageHolder.threadTypeMessage.setSelection(pending.length)
+        }
+        checkSendMessageAvailability()
+    }
+    private fun attachGhostSwipeToReply() {
+        val recycler = binding.threadMessagesList
+        if (recycler.getTag(R.id.thread_messages_list) == true) return
+        recycler.setTag(R.id.thread_messages_list, true)
+        val callback = object : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.RIGHT) {
+            private var hapticTriggered = false
+            override fun onMove(
+                rv: RecyclerView,
+                vh: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean = false
+            override fun getSwipeThreshold(viewHolder: RecyclerView.ViewHolder): Float = 0.22f
+            override fun onChildDraw(
+                c: Canvas,
+                rv: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                dX: Float,
+                dY: Float,
+                actionState: Int,
+                isCurrentlyActive: Boolean
+            ) {
+                val maxShift = rv.width * 0.24f
+                val clampedDx = dX.coerceIn(0f, maxShift)
+                viewHolder.itemView.translationX = clampedDx
+                if (clampedDx >= maxShift * 0.75f && !hapticTriggered && isCurrentlyActive) {
+                    hapticTriggered = true
+                    viewHolder.itemView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                } else if (clampedDx < maxShift * 0.4f) {
+                    hapticTriggered = false
+                }
+            }
+            override fun clearView(rv: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+                super.clearView(rv, viewHolder)
+                viewHolder.itemView.animate().translationX(0f).setDuration(180L).start()
+                hapticTriggered = false
+            }
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
+                val pos = viewHolder.bindingAdapterPosition
+                val adapter = recycler.adapter as? ThreadAdapter
+                adapter?.notifyItemChanged(pos)
+                val item = adapter?.currentList?.getOrNull(pos) as? Message ?: return
+                val snippet = item.body.trim().replace("\n", " ").take(72)
+                if (snippet.isNotEmpty()) {
+                    val quotePrefix = "> \"$snippet\"\n"
+                    val currentInput = binding.messageHolder.threadTypeMessage.value
+                    val updated = if (currentInput.startsWith("> \"")) {
+                        quotePrefix + currentInput.substringAfter("\n")
+                    } else {
+                        quotePrefix + currentInput
+                    }
+                    binding.messageHolder.threadTypeMessage.setText(updated)
+                    binding.messageHolder.threadTypeMessage.setSelection(updated.length)
+                    binding.messageHolder.threadTypeMessage.requestFocus()
+                }
+            }
+        }
+        ItemTouchHelper(callback).attachToRecyclerView(recycler)
+    }
+    private fun checkLatestMessageForOtpBanner(items: List<ThreadItem>) {
+        val latestReceived = items.filterIsInstance<Message>()
+            .lastOrNull { it.isReceivedMessage() } ?: return
+        if (latestReceived.id == ghostLastPromptedOtpId) return
+        val otp = GhostOtpHelper.extractOtp(latestReceived.body) ?: return
+        ghostLastPromptedOtpId = latestReceived.id
+        Snackbar.make(binding.root, "OTP detected: $otp", Snackbar.LENGTH_LONG)
+            .setAction("COPY") {
+                val clipboard = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager
+                clipboard?.setPrimaryClip(ClipData.newPlainText("OTP Code", otp))
+                toast("Copied $otp")
+            }
+            .show()
+    }
+
     private fun sendMessage() {
+        binding.messageHolder.threadSendMessage.apply {
+            animate().cancel()
+            scaleX = 0.80f
+            scaleY = 0.80f
+            animate().scaleX(1f).scaleY(1f).setDuration(220L).setInterpolator(OvershootInterpolator(1.4f)).start()
+        }
         var text = binding.messageHolder.threadTypeMessage.value
         if (text.isEmpty() && getAttachmentSelections().isEmpty()) {
             showErrorToast(getString(org.fossify.commons.R.string.unknown_error_occurred))
@@ -1595,10 +1834,46 @@ class ThreadActivity : SimpleActivity() {
         val subscriptionId = availableSIMCards.getOrNull(currentSIMCardIndex)?.subscriptionId
             ?: SmsManager.getDefaultSmsSubscriptionId()
 
-        if (isScheduledMessage) {
+                if (isScheduledMessage) {
             sendScheduledMessage(text, subscriptionId)
         } else if (!confirmGroupMessageSendIfNeeded()) {
-            sendNormalMessage(text, subscriptionId)
+            if (getAttachmentSelections().isEmpty() && ghostUndoTimer == null) {
+                ghostPendingText = text
+                clearCurrentMessage()
+                val sendBtn = binding.messageHolder.threadSendMessage
+                sendBtn.isEnabled = true
+                sendBtn.isClickable = true
+                sendBtn.alpha = 1f
+                ghostUndoSnackbar = Snackbar.make(
+                    binding.root,
+                    "Sending in 5s…",
+                    Snackbar.LENGTH_INDEFINITE
+                ).setAction("UNDO") {
+                    cancelGhostPendingSend(restoreText = true)
+                    toast("Message canceled")
+                }.also { it.show() }
+                ghostUndoTimer = object : CountDownTimer(5000L, 1000L) {
+                    override fun onTick(millisUntilFinished: Long) {
+                        val secs = ((millisUntilFinished + 999L) / 1000L).toInt()
+                        sendBtn.text = "${secs}s"
+                        ghostUndoSnackbar?.setText("Sending in ${secs}s…")
+                    }
+                    override fun onFinish() {
+                        val msgToSend = ghostPendingText ?: return
+                        cancelGhostPendingSend(restoreText = false)
+                        sendNormalMessage(msgToSend, subscriptionId)
+                    }
+                }.start()
+            } else {
+                if (ghostUndoTimer != null) {
+                    val prev = ghostPendingText
+                    cancelGhostPendingSend(restoreText = false)
+                    if (!prev.isNullOrEmpty()) {
+                        sendNormalMessage(prev, subscriptionId)
+                    }
+                }
+                sendNormalMessage(text, subscriptionId)
+            }
         }
     }
 
@@ -1899,6 +2174,7 @@ class ThreadActivity : SimpleActivity() {
         runOnUiThread {
             if (providerParticipantsChanged) {
                 setupThreadTitle()
+                updateGhostSmartReplyBar()
             }
             setupSIMSelector()
         }
@@ -2006,6 +2282,59 @@ class ThreadActivity : SimpleActivity() {
                 }
             }
         }
+    }
+
+        private fun updateGhostSmartReplyBar() {
+        val container = binding.ghostSmartReplyContainer
+        val scroll = binding.ghostSmartReplyScroll
+        container.removeAllViews()
+        if (isSpecialNumber() || isRecycleBin) {
+            scroll.beGone()
+            return
+        }
+        val latestIncoming = messages.filter { it.isReceivedMessage() }.maxByOrNull { it.date }
+        val suggestions = if (latestIncoming != null) {
+            GhostSmartReplyHelper.suggestReplies(latestIncoming.body)
+        } else {
+            emptyList()
+        }
+        if (suggestions.isEmpty()) {
+            scroll.beGone()
+            return
+        }
+        val primaryColor = getProperPrimaryColor()
+        val textColor = getProperTextColor()
+        val density = resources.displayMetrics.density
+        val padH = (12 * density).toInt()
+        val padV = (6 * density).toInt()
+        val gap = (8 * density).toInt()
+        suggestions.forEach { replyText ->
+            val chip = TextView(this).apply {
+                text = replyText
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(textColor)
+                setPadding(padH, padV, padH, padV)
+                background = GradientDrawable().apply {
+                    cornerRadius = 18f * density
+                    setColor(primaryColor.adjustAlpha(0.14f))
+                    setStroke((1 * density).toInt(), primaryColor.adjustAlpha(0.35f))
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    this.marginEnd = gap
+                }
+                setOnClickListener {
+                    binding.messageHolder.threadTypeMessage.setText(replyText)
+                    binding.messageHolder.threadTypeMessage.setSelection(replyText.length)
+                    binding.messageHolder.threadTypeMessage.requestFocus()
+                }
+            }
+            container.addView(chip)
+        }
+        scroll.beVisible()
     }
 
     private fun showScheduleMessageDialog() {

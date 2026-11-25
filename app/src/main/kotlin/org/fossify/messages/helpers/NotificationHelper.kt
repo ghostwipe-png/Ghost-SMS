@@ -24,6 +24,7 @@ import org.fossify.messages.extensions.config
 import org.fossify.messages.extensions.shortcutHelper
 import org.fossify.messages.messaging.isShortCodeWithLetters
 import org.fossify.messages.receivers.DeleteSmsReceiver
+import org.fossify.messages.receivers.CopyOtpReceiver
 import org.fossify.messages.receivers.DirectReplyReceiver
 import org.fossify.messages.receivers.MarkAsReadReceiver
 
@@ -46,6 +47,7 @@ class NotificationHelper(private val context: Context) {
         sender: String?,
         alertOnlyOnce: Boolean = false
     ) {
+        if (GhostVaultManager.isThreadVaulted(context, threadId)) return
         val hasCustomNotifications =
             context.config.customNotifications.contains(threadId.toString())
         val notificationChannelId =
@@ -120,6 +122,25 @@ class NotificationHelper(private val context: Context) {
                 .build()
         }
 
+        val detectedOtp = GhostOtpHelper.extractOtp(body)
+        var copyOtpAction: NotificationCompat.Action? = null
+        if (detectedOtp != null) {
+            val copyIntent = Intent(context, CopyOtpReceiver::class.java).apply {
+                putExtra(CopyOtpReceiver.EXTRA_OTP_CODE, detectedOtp)
+                putExtra(THREAD_ID, threadId)
+            }
+            val copyPendingIntent = PendingIntent.getBroadcast(
+                context,
+                notificationId xor detectedOtp.hashCode(),
+                copyIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            copyOtpAction = NotificationCompat.Action.Builder(
+                org.fossify.commons.R.drawable.ic_copy_vector,
+                "Copy $detectedOtp",
+                copyPendingIntent
+            ).build()
+        }
         val largeIcon = bitmap ?: if (sender != null) {
             SimpleContactsHelper(context).getContactLetterIcon(sender)
         } else {

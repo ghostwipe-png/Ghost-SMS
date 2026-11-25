@@ -17,6 +17,7 @@ class App : FossifyApp() {
 
     override fun onCreate() {
         super.onCreate()
+        org.fossify.messages.helpers.GhostHapticEngine.install(this)
         if (hasPermission(PERMISSION_READ_CONTACTS)) {
             listOf(
                 ContactsContract.Contacts.CONTENT_URI,

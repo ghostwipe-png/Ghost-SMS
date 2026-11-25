@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/message_holder"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content">
+    android:layout_height="wrap_content" android:paddingHorizontal="8dp" android:paddingBottom="6dp" android:clipToPadding="false">
 
     <RelativeLayout
         android:id="@+id/scheduled_message_holder"
@@ -13,7 +13,7 @@
         android:layout_marginStart="@dimen/normal_margin"
         android:layout_marginTop="@dimen/medium_margin"
         android:layout_marginEnd="@dimen/medium_margin"
-        android:background="@drawable/section_holder_stroke"
+        android:background="@drawable/ghost_composer_pill_bg"
         android:orientation="horizontal"
         android:visibility="gone"
         app:layout_constraintBottom_toTopOf="@id/thread_attachments_recyclerview"
@@ -190,7 +190,7 @@
         android:layout_alignParentEnd="true"
         android:background="@color/divider_grey"
         android:importantForAccessibility="no"
-        app:layout_constraintBottom_toTopOf="@id/attachment_picker_holder" />
+        app:layout_constraintBottom_toTopOf="@id/attachment_picker_holder"  android:visibility="gone" />
 
     <ScrollView
         android:id="@+id/attachment_picker_holder"

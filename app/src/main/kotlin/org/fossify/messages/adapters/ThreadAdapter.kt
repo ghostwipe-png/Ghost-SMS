@@ -1,4 +1,6 @@
 package org.fossify.messages.adapters
+import org.fossify.messages.helpers.GhostBubbleStyler
+import org.fossify.messages.helpers.GhostLinkGuard
 
 import android.annotation.SuppressLint
 import android.content.Intent
@@ -8,6 +10,7 @@ import android.graphics.drawable.Drawable
 import android.util.TypedValue
 import android.view.Menu
 import android.view.View
+import android.view.animation.OvershootInterpolator
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
@@ -366,11 +369,46 @@ class ThreadAdapter(
         }
     }
 
+    private val animatedMessageIds = HashSet<Long>()
+    private fun animateWhatsAppBubble(view: View, message: Message) {
+        if (!animatedMessageIds.add(message.id)) return
+        view.post {
+            view.pivotX = if (message.isReceivedMessage()) 0f else view.width.toFloat()
+            view.pivotY = view.height.toFloat()
+            view.scaleX = 0.86f
+            view.scaleY = 0.86f
+            view.translationY = 18f
+            view.alpha = 0.35f
+            view.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .translationY(0f)
+                .alpha(1f)
+                .setDuration(210L)
+                .setInterpolator(OvershootInterpolator(1.05f))
+                .start()
+        }
+    }
+    private fun applyThickBubbleStyle(binding: ItemMessageBinding) {
+        val density = activity.resources.displayMetrics.density
+        val padH = (14 * density).toInt()
+        val padV = (10 * density).toInt()
+        binding.threadMessageBody.apply {
+            setTypeface(typeface, Typeface.BOLD)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16.5f)
+            setPadding(padH, padV, padH, padV)
+            elevation = 3f * density
+        }
+    }
     private fun setupView(holder: ViewHolder, view: View, message: Message) {
         ItemMessageBinding.bind(view).apply {
+            applyThickBubbleStyle(this)
+            animateWhatsAppBubble(threadMessageHolder, message)
+            org.fossify.messages.helpers.GhostMotionEngine.animateIncomingBubbleIfFresh(threadMessageHolder, message)
             threadMessageHolder.isSelected = selectedKeys.contains(message.getSelectionKey())
             threadMessageBody.apply {
-                text = message.body
+                text = GhostBubbleStyler.formatRichMessageText(activity, message.body, !message.isReceivedMessage(), activity.getProperPrimaryColor())
+                GhostLinkGuard.attachToTextView(activity, this)
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSize)
                 beVisibleIf(message.body.isNotEmpty())
                 setOnLongClickListener {
@@ -431,8 +469,7 @@ class ThreadAdapter(
             }
 
             threadMessageBody.apply {
-                background = AppCompatResources.getDrawable(activity, R.drawable.item_received_background)
-                setTextColor(textColor)
+                GhostBubbleStyler.applyGroupedBubble(activity, this, currentList, currentList.indexOf(message), message, false, activity.getProperPrimaryColor())
                 setLinkTextColor(activity.getProperPrimaryColor())
             }
 
@@ -473,8 +510,7 @@ class ThreadAdapter(
                     addRule(RelativeLayout.ALIGN_PARENT_END)
                 }
 
-                background = AppCompatResources.getDrawable(activity, R.drawable.item_sent_background)
-                background.applyColorFilter(primaryColor)
+                GhostBubbleStyler.applyGroupedBubble(activity, this, currentList, currentList.indexOf(message), message, true, primaryColor)
                 setTextColor(contrastColor)
                 setLinkTextColor(contrastColor)
 

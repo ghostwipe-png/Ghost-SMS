@@ -3,6 +3,27 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="AppCompatResource,AlwaysShowAction">
+        <item
+        android:id="@+id/open_ghost_vault"
+        android:icon="@drawable/ic_lock_vector"
+        android:showAsAction="ifRoom"
+        android:title="Ghost Vault"
+        app:showAsAction="ifRoom" />
+            <item
+        android:id="@+id/open_ghost_privacy"
+        android:showAsAction="never"
+        android:title="Ghost Mode (Privacy &amp; Shield)"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/open_ghost_ledger"
+        android:showAsAction="never"
+        android:title="Ghost Ledger (M-Pesa &amp; Bank)"
+        app:showAsAction="never" />
+        <item
+        android:id="@+id/open_ghost_backup"
+        android:showAsAction="never"
+        android:title="Encrypted Backup (.ghost)"
+        app:showAsAction="never" />
     <item
         android:id="@+id/show_recycle_bin"
         android:showAsAction="never"

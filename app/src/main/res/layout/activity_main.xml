@@ -69,10 +69,27 @@
                     android:textSize="@dimen/bigger_text_size"
                     android:visibility="gone" />
 
+                                <HorizontalScrollView
+                    android:id="@+id/ghost_category_scroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentTop="true"
+                    android:clipToPadding="false"
+                    android:paddingHorizontal="12dp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp"
+                    android:scrollbars="none">
+                    <LinearLayout
+                        android:id="@+id/ghost_category_container"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal" />
+                </HorizontalScrollView>
                 <com.qtalk.recyclerviewfastscroller.RecyclerViewFastScroller
                     android:id="@+id/conversations_fastscroller"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content">
+                    android:layout_height="wrap_content"
+                    android:layout_below="@id/ghost_category_scroll">
 
                     <org.fossify.commons.views.MyRecyclerView
                         android:id="@+id/conversations_list"

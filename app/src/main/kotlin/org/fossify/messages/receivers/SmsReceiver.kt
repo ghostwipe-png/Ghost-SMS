@@ -142,6 +142,16 @@ class SmsReceiver : BroadcastReceiver() {
         }
 
         refreshMessages()
+        if (!org.fossify.messages.helpers.GhostMotionEngine.isViewingThread(threadId)) {
+            org.fossify.messages.activities.GhostIncomingPopupActivity.launch(
+                context = context,
+                address = address,
+                senderName = senderName,
+                body = body,
+                threadId = threadId,
+                subscriptionId = subscriptionId
+            )
+        }
         refreshConversations()
         context.showReceivedMessageNotification(
             messageId = newMessageId,

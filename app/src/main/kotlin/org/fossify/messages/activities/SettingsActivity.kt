@@ -45,6 +45,8 @@ import org.fossify.messages.helpers.FILE_SIZE_NONE
 import org.fossify.messages.helpers.LOCK_SCREEN_NOTHING
 import org.fossify.messages.helpers.LOCK_SCREEN_SENDER
 import org.fossify.messages.helpers.LOCK_SCREEN_SENDER_MESSAGE
+import org.fossify.messages.helpers.GhostFontManager
+import org.fossify.messages.helpers.GhostThemeManager
 import org.fossify.messages.helpers.MessagesImporter
 import org.fossify.messages.helpers.refreshConversations
 import java.util.Locale
@@ -98,6 +100,8 @@ class SettingsActivity : SimpleActivity() {
         setupTopAppBar(binding.settingsAppbar, NavigationIcon.Arrow)
 
         setupCustomizeColors()
+        setupProfessionalThemes()
+        setupFontStyle()
         setupCustomizeNotifications()
         setupUseEnglish()
         setupLanguage()
@@ -160,9 +164,33 @@ class SettingsActivity : SimpleActivity() {
         blockedNumbersAtPause = getBlockedNumbers().hashCode()
     }
 
-    private fun setupCustomizeColors() = binding.apply {
+        private fun setupCustomizeColors() = binding.apply {
         settingsColorCustomizationHolder.setOnClickListener {
             startCustomizationActivity()
+        }
+    }
+    private fun setupProfessionalThemes() = binding.apply {
+        settingsProTheme.text = GhostThemeManager.getCurrentThemeName(this@SettingsActivity)
+        settingsProThemeHolder.setOnClickListener {
+            val items = GhostThemeManager.getRadioItems()
+            val currentId = GhostThemeManager.getCurrentThemeId(this@SettingsActivity)
+            RadioGroupDialog(this@SettingsActivity, items, currentId) {
+                GhostThemeManager.applyThemePreset(this@SettingsActivity, it as Int)
+                settingsProTheme.text = GhostThemeManager.getCurrentThemeName(this@SettingsActivity)
+                recreate()
+            }
+        }
+    }
+    private fun setupFontStyle() = binding.apply {
+        settingsFontStyle.text = GhostFontManager.getCurrentFontName(this@SettingsActivity)
+        settingsFontStyleHolder.setOnClickListener {
+            val items = GhostFontManager.getRadioItems()
+            val currentId = GhostFontManager.getCurrentFontId(this@SettingsActivity)
+            RadioGroupDialog(this@SettingsActivity, items, currentId) {
+                GhostFontManager.applyFontPreset(this@SettingsActivity, it as Int)
+                settingsFontStyle.text = GhostFontManager.getCurrentFontName(this@SettingsActivity)
+                recreate()
+            }
         }
     }
 

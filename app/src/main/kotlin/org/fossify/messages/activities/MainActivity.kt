@@ -64,6 +64,22 @@ import org.fossify.messages.extensions.getMessages
 import org.fossify.messages.extensions.insertOrUpdateConversation
 import org.fossify.messages.extensions.messagesDB
 import org.fossify.messages.helpers.SEARCHED_MESSAGE_ID
+import androidx.appcompat.app.AlertDialog
+import org.fossify.messages.helpers.GhostEphemeralManager
+import org.fossify.messages.helpers.GhostVaultManager
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.util.TypedValue
+import android.widget.LinearLayout
+import android.widget.TextView
+import org.fossify.commons.extensions.getContrastColor
+import org.fossify.messages.helpers.GhostInboxClassifier
+import org.fossify.messages.dialogs.GhostLedgerBottomSheet
+import org.fossify.messages.dialogs.GhostPrivacySheet
+import org.fossify.messages.dialogs.GhostBackupSheet
+import org.fossify.messages.helpers.GhostPrivacyManager
+import org.fossify.messages.helpers.GhostOtpSweeper
+import org.fossify.messages.helpers.GhostLedgerParser
 import org.fossify.messages.helpers.THREAD_ID
 import org.fossify.messages.helpers.THREAD_TITLE
 import org.fossify.messages.models.Conversation
@@ -125,6 +141,8 @@ class MainActivity : SimpleActivity() {
 
         updateTextColors(binding.mainCoordinator)
         binding.searchHolder.setBackgroundColor(getProperBackgroundColor())
+        GhostPrivacyManager.applyWindowSecurity(this)
+        renderGhostCategoryTabs()
 
         val properPrimaryColor = getProperPrimaryColor()
         binding.noConversationsPlaceholder2.setTextColor(properPrimaryColor)
@@ -155,6 +173,42 @@ class MainActivity : SimpleActivity() {
         }
     }
 
+        private fun openGhostVaultDialog() {
+        GhostVaultManager.authenticate(
+            activity = this,
+            title = "Ghost Vault",
+            subtitle = "Authenticate to view hidden conversations",
+            onSuccess = {
+                ensureBackgroundThread {
+                    val vaultedIds = GhostVaultManager.getVaultedThreadIds(this)
+                    val vaultedConvs = (conversationsDB.getNonArchived() + conversationsDB.getAllArchived()).filter { vaultedIds.contains(it.threadId) }
+                    runOnUiThread {
+                        if (vaultedConvs.isEmpty()) {
+                            toast("Ghost Vault is empty. Open any chat menu to hide it here.")
+                            return@runOnUiThread
+                        }
+                        val titles = vaultedConvs.map { "${it.title} (${it.phoneNumber})" }.toTypedArray()
+                        AlertDialog.Builder(this)
+                            .setTitle("Ghost Vault (${vaultedConvs.size})")
+                            .setItems(titles) { _, which ->
+                                val selected = vaultedConvs[which]
+                                Intent(this, ThreadActivity::class.java).apply {
+                                    putExtra(THREAD_ID, selected.threadId)
+                                    putExtra(THREAD_TITLE, selected.title)
+                                    startActivity(this)
+                                }
+                            }
+                            .setNegativeButton("Close", null)
+                            .show()
+                    }
+                }
+            },
+            onError = { err ->
+                if (err.isNotBlank()) toast(err)
+            }
+        )
+    }
+
     private fun setupOptionsMenu() {
         binding.mainMenu.requireToolbar().inflateMenu(R.menu.menu_main)
         binding.mainMenu.toggleHideOnScroll(true)
@@ -177,6 +231,26 @@ class MainActivity : SimpleActivity() {
 
         binding.mainMenu.requireToolbar().setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
+                R.id.open_ghost_vault -> openGhostVaultDialog()
+                                                R.id.open_ghost_privacy -> {
+                    GhostPrivacySheet(this).show()
+                    true
+                }
+                R.id.open_ghost_backup -> {
+                    GhostBackupSheet(this) { getCachedConversations() }.show()
+                    true
+                }
+                R.id.open_ghost_ledger -> {
+                    ensureBackgroundThread {
+                        val vaultedIds = GhostVaultManager.getVaultedThreadIds(this)
+                        val visibleMessages = messagesDB.getAll().filterNot { vaultedIds.contains(it.threadId) }
+                        val summary = GhostLedgerParser.parseMessages(visibleMessages)
+                        runOnUiThread {
+                            GhostLedgerBottomSheet(this, summary).show()
+                        }
+                    }
+                    true
+                }
                 R.id.show_recycle_bin -> launchRecycleBin()
                 R.id.show_archived -> launchArchivedConversations()
                 R.id.settings -> launchSettings()
@@ -301,7 +375,8 @@ class MainActivity : SimpleActivity() {
             }
 
             runOnUiThread {
-                setupConversations(conversations, cached = true)
+                val visibleCached = conversations.filterNot { GhostVaultManager.isThreadVaulted(this, it.threadId) } as ArrayList<Conversation>
+                setupConversations(visibleCached, cached = true)
                 getNewConversations(
                     (conversations + archived).toMutableList() as ArrayList<Conversation>
                 )
@@ -364,9 +439,12 @@ class MainActivity : SimpleActivity() {
                 }
             }
 
-            val allConversations = conversationsDB.getNonArchived() as ArrayList<Conversation>
+            GhostEphemeralManager.purgeAllThreads(this)
+            if (GhostOtpSweeper.isAutoSweepEnabled(this)) { GhostOtpSweeper.sweepExpiredOtps(this) }
+            val visibleAll = conversationsDB.getNonArchived()
+                .filterNot { GhostVaultManager.isThreadVaulted(this, it.threadId) } as ArrayList<Conversation>
             runOnUiThread {
-                setupConversations(allConversations)
+                setupConversations(visibleAll)
             }
 
             if (config.appRunCount == 1) {
@@ -391,7 +469,11 @@ class MainActivity : SimpleActivity() {
                 itemClick = { handleConversationClick(it) }
             )
 
-            binding.conversationsList.adapter = currAdapter
+            binding.conversationsList.setHasFixedSize(true)
+        binding.conversationsList.setItemViewCacheSize(24)
+            val padBottom = (88 * resources.displayMetrics.density).toInt()
+            binding.conversationsList.setPadding(0, (4 * resources.displayMetrics.density).toInt(), 0, padBottom)
+        binding.conversationsList.adapter = currAdapter
             if (areSystemAnimationsEnabled) {
                 binding.conversationsList.scheduleLayoutAnimation()
             }
@@ -399,26 +481,80 @@ class MainActivity : SimpleActivity() {
         return currAdapter as ConversationsAdapter
     }
 
-    private fun setupConversations(
-        conversations: ArrayList<Conversation>,
-        cached: Boolean = false,
-    ) {
-        val sortedConversations = conversations
+        private var allUnvaultedConversations: ArrayList<Conversation> = ArrayList()
+    private var selectedGhostCategory = GhostInboxClassifier.Category.ALL
+    private fun renderGhostCategoryTabs() {
+        val container = binding.ghostCategoryContainer
+        container.removeAllViews()
+        val primaryColor = getProperPrimaryColor()
+        val textColor = getProperTextColor()
+        val density = resources.displayMetrics.density
+        val padH = (14 * density).toInt()
+        val padV = (7 * density).toInt()
+        val marginEnd = (8 * density).toInt()
+        val counts = GhostInboxClassifier.Category.entries.associateWith { cat ->
+            if (cat == GhostInboxClassifier.Category.ALL) {
+                allUnvaultedConversations.size
+            } else {
+                allUnvaultedConversations.count { GhostInboxClassifier.classify(it) == cat }
+            }
+        }
+        GhostInboxClassifier.Category.entries.forEach { category ->
+            val isSelected = category == selectedGhostCategory
+            val count = counts[category] ?: 0
+            val pill = TextView(this).apply {
+                text = if (count > 0) "${category.label} ($count)" else category.label
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setTypeface(typeface, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
+                setPadding(padH, padV, padH, padV)
+                setTextColor(if (isSelected) primaryColor.getContrastColor() else textColor)
+                val darkTheme = org.fossify.messages.helpers.GhostInboxStyler.isAppDarkTheme(this@MainActivity)
+                background = GradientDrawable().apply {
+                    cornerRadius = 20f * density
+                    setStroke(0, android.graphics.Color.TRANSPARENT)
+                    if (isSelected) {
+                        setColor(primaryColor)
+                    } else {
+                        setColor(if (darkTheme) android.graphics.Color.parseColor("#1B222D") else android.graphics.Color.parseColor("#E6ECF5"))
+                    }
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    this.marginEnd = marginEnd
+                }
+                setOnClickListener {
+                    if (selectedGhostCategory != category) {
+                        selectedGhostCategory = category
+                        renderGhostCategoryTabs()
+                        applySelectedCategoryFilter(cached = false)
+                    }
+                }
+            }
+            container.addView(pill)
+        }
+    }
+    private fun applySelectedCategoryFilter(cached: Boolean) {
+        val filtered = if (selectedGhostCategory == GhostInboxClassifier.Category.ALL) {
+            allUnvaultedConversations
+        } else {
+            allUnvaultedConversations.filter {
+                GhostInboxClassifier.classify(it) == selectedGhostCategory
+            } as ArrayList<Conversation>
+        }
+        val sortedConversations = filtered
             .sortedWith(
                 compareByDescending<Conversation> {
                     config.pinnedConversations.contains(it.threadId.toString())
                 }.thenByDescending { it.date }
             ).toMutableList() as ArrayList<Conversation>
-
         if (cached && config.appRunCount == 1) {
-            // there are no cached conversations on the first run so we show the
-            // loading placeholder and progress until we are done loading from telephony
-            showOrHideProgress(conversations.isEmpty())
+            showOrHideProgress(allUnvaultedConversations.isEmpty())
         } else {
             showOrHideProgress(false)
-            showOrHidePlaceholder(conversations.isEmpty())
+            showOrHidePlaceholder(sortedConversations.isEmpty())
         }
-
         try {
             getOrCreateConversationsAdapter().apply {
                 updateConversations(sortedConversations) {
@@ -430,6 +566,16 @@ class MainActivity : SimpleActivity() {
         } catch (_: Exception) {
         }
     }
+
+        private fun setupConversations(
+        conversations: ArrayList<Conversation>,
+        cached: Boolean = false,
+    ) {
+        allUnvaultedConversations = conversations
+        renderGhostCategoryTabs()
+        applySelectedCategoryFilter(cached)
+    }
+
 
     private fun showOrHideProgress(show: Boolean) {
         if (show) {
@@ -524,12 +670,13 @@ class MainActivity : SimpleActivity() {
         }
 
         lastSearchedText = text
-        binding.searchPlaceholder2.beGoneIf(text.length >= 2)
-        if (text.length >= 2) {
+        binding.searchPlaceholder2.beGoneIf(text.isNotEmpty())
+        if (text.isNotEmpty()) {
             ensureBackgroundThread {
                 val searchQuery = "%$text%"
-                val messages = messagesDB.getMessagesWithText(searchQuery)
-                val conversations = conversationsDB.getConversationsWithText(searchQuery)
+                val vaultedIds = GhostVaultManager.getVaultedThreadIds(this)
+                val messages = messagesDB.getMessagesWithText(searchQuery).filterNot { vaultedIds.contains(it.threadId) }
+                val conversations = conversationsDB.getConversationsWithText(searchQuery).filterNot { vaultedIds.contains(it.threadId) }
                 if (text == lastSearchedText) {
                     showSearchResults(messages, conversations, text)
                 }
